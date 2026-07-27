@@ -1,6 +1,6 @@
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { JobStatus } from 'generated/prisma/client';
+import { JobStatus } from '@prisma/client';
 
 export class QueryJobsDTO {
   @IsOptional()

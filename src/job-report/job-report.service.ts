@@ -10,7 +10,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateJobReportDTO } from './dto/create-job-report.dto';
 import { UpdateJobReportDTO } from './dto/update-job-report.dto';
 import { Info } from 'src/common/interfaces/info-token.interface';
-import { JobStatus, ReportStatus } from 'generated/prisma/client';
+import { JobStatus, ReportStatus } from '@prisma/client';
 
 @Injectable()
 export class JobReportService {

@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { ApplicationStatus, JobStatus } from 'generated/prisma/client';
+import { ApplicationStatus, JobStatus } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Info } from 'src/common/interfaces/info-token.interface';
 import { EmailService } from 'src/email/email.service';

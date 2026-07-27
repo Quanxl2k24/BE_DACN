@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { JobStatus } from 'generated/prisma/client';
+import { JobStatus } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateJobDTO } from './dto/create-job.dto';
 import { UpdateJobDTO } from './dto/update-job.dto';

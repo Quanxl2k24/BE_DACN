@@ -9,7 +9,7 @@ import {
   Min,
 } from 'class-validator';
 
-import { JobStatus } from 'generated/prisma/client';
+import { JobStatus } from '@prisma/client';
 
 export class UpdateJobDTO {
   @IsOptional()

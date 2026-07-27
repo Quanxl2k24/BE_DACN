@@ -8,7 +8,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { RegisterReqDTO, ResendOtpDTO, VerifyOtpDTO } from './dto/index';
 import * as argon from 'argon2';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from 'generated/prisma/client';
+import { Prisma } from '@prisma/client';
 import { LoginReqDTO } from './dto/index';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { Response } from 'express';

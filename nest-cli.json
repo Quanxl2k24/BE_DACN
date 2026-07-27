@@ -3,13 +3,6 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-    "deleteOutDir": false,
-    "assets": [
-      {
-        "include": "../generated/prisma/package.json",
-        "outDir": "./generated/prisma",
-        "watchAssets": true
-      }
-    ]
+    "deleteOutDir": false
   }
 }
