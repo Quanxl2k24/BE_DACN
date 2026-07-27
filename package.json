@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "npm run start:dev",
+    "postinstall": "npx prisma generate",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && nest build",
     "postbuild": "node -e \"const{f,copyFileSync,mkdirSync,existsSync}=require('fs');const d='dist/generated/prisma';if(!existsSync(d))mkdirSync(d,{recursive:true});copyFileSync('generated/prisma/package.json',d+'/package.json')\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
