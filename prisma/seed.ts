@@ -1,7 +1,8 @@
-import { PrismaClient } from '../generated/prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import * as crypto from 'crypto';
+import * as argon from 'argon2';
 
 const pool = new pg.Pool({
   connectionString: process.env['DATABASE_URL'],
@@ -145,6 +146,25 @@ async function main() {
     });
   }
   console.log('✅ Đã seed xong Skills (Từ điển kỹ năng).');
+
+  // ==========================================
+  // 5. CREATE ADMIN ACCOUNT
+  // ==========================================
+  const adminEmail = 'quanxl2k24@gmail.com';
+  const adminPassword = await argon.hash('Admin@123');
+
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {},
+    create: {
+      id: crypto.randomUUID(),
+      email: adminEmail,
+      passwordHash: adminPassword,
+      fullName: 'System Admin',
+      type: 'ADMIN',
+    },
+  });
+  console.log('✅ Đã tạo tài khoản Admin.');
 
   console.log('🎉 Quá trình Seed Database hoàn tất thành công và đã liên kết quyền!');
 }
