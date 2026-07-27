@@ -12,6 +12,7 @@ import {
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { AccessTokenGuard } from 'src/auth/guard/access-token.guard';
 import { UploadService } from './upload.service';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import type { Request } from 'express';
 
 interface UploadFile {
@@ -25,6 +26,7 @@ const CV_REGEX = /^(application\/pdf|application\/msword|application\/vnd\.openx
 const IMAGE_REGEX = /^(image\/jpeg|image\/png|image\/webp)$/;
 const MAX_SIZE = 5 * 1024 * 1024;
 
+@ApiTags('Upload - Tải lên tệp')
 @Controller('upload')
 export class UploadController {
   constructor(private uploadService: UploadService) { }
@@ -32,6 +34,17 @@ export class UploadController {
   @Post('cv')
   @UseGuards(AccessTokenGuard)
   @UseInterceptors(FileInterceptor('cv'))
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        cv: { type: 'string', format: 'binary', description: 'File CV (PDF, DOC, DOCX)' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Tải lên CV', description: 'Tải file CV lên Cloudinary. Hỗ trợ PDF, DOC, DOCX (tối đa 5MB).' })
   uploadCV(
     @UploadedFile(
       new ParseFilePipeBuilder()
@@ -49,6 +62,21 @@ export class UploadController {
   @Post('images')
   @UseGuards(AccessTokenGuard)
   @UseInterceptors(FilesInterceptor('images', 5))
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description: 'Danh sách ảnh (tối đa 5 file, định dạng JPEG/PNG/WEBP)',
+        },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Tải lên ảnh', description: 'Tải lên tối đa 5 ảnh (JPEG/PNG/WEBP, mỗi ảnh tối đa 5MB).' })
   uploadImages(
     @UploadedFiles(
       new ParseFilePipeBuilder()

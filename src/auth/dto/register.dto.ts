@@ -5,6 +5,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export enum UserType {
   APPLICANT = 'APPLICANT',
@@ -12,10 +13,12 @@ export enum UserType {
 }
 
 export class RegisterReqDTO {
+  @ApiProperty({ description: 'Email đăng ký', example: 'user@example.com' })
   @IsEmail()
   @IsNotEmpty()
   email!: string;
 
+  @ApiProperty({ description: 'Mật khẩu (8+ ký tự, chữ hoa, thường, số, ký tự đặc biệt)', example: 'Abc@12345' })
   @IsString()
   @IsNotEmpty()
   @Matches(
@@ -26,10 +29,12 @@ export class RegisterReqDTO {
   )
   password!: string;
 
+  @ApiProperty({ description: 'Họ và tên', example: 'Nguyễn Văn A' })
   @IsString()
   @IsNotEmpty()
   fullName!: string;
 
+  @ApiProperty({ enum: UserType, description: 'Loại tài khoản', example: 'APPLICANT' })
   @IsEnum(UserType)
   @IsNotEmpty()
   type!: UserType;
