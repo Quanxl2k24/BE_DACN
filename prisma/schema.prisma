@@ -1,0 +1,303 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+enum JobStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  CLOSED
+  SUSPENDED
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SCREENING
+  INTERVIEW
+  OFFERED
+  HIRED
+  REJECTED
+}
+
+enum UserType {
+  APPLICANT   // Người ứng tuyển
+  RECRUITER   // Người tuyển dụng
+  ADMIN       // Quản trị viên hệ thống
+}
+
+// ==========================================
+// 1. AUTH, USERS & DEVICE MANAGEMENT
+// ==========================================
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String?   @map("full_name")
+  phone        String?
+  type         UserType
+  mfaEnabled   Boolean   @default(false) @map("mfa_enabled")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at") // Soft delete
+
+  // Quan hệ (Relations)
+  sessions         UserSession[]
+  userCompanyRoles UserCompanyRole[]
+  jobsCreated      Job[]             @relation("JobCreator")
+  resumes          Resume[]
+  applications     Application[]
+  applicationHistories ApplicationHistory[]
+  jobReports       JobReport[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  refreshToken String   @unique @map("refresh_token")
+  lookupKey    String   @unique @map("lookup_key")
+  deviceId     String?  @map("device_id")
+  userAgent    String?  @map("user_agent")
+  expiresAt    DateTime @map("expires_at")
+  isRevoked    Boolean  @default(false) @map("is_revoked")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, deviceId])
+  @@map("user_sessions")
+}
+
+// ==========================================
+// 2. FINE-GRAINED RBAC & MULTI-TENANT
+// ==========================================
+model Company {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(255)
+  taxCode     String?   @unique @map("tax_code") @db.VarChar(50)
+  email       String?   @db.VarChar(255)
+  phone       String?   @db.VarChar(50)
+  address     String?   @db.Text
+  website     String?   @db.VarChar(255)
+  logoUrl     String?   @map("logo_url") @db.VarChar(255)
+  description String?   @db.Text
+  status      String    @default("PENDING") @db.VarChar(50)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  roles            Role[]
+  userCompanyRoles UserCompanyRole[]
+  jobs             Job[]
+
+  @@map("companies")
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique // Ví dụ: VIEW_CV, DOWNLOAD_CV
+  module      String?
+  description String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id        String  @id @default(uuid()) @db.Uuid
+  companyId String? @map("company_id") @db.Uuid // Null nếu là System Role
+  name      String
+  isCustom  Boolean @default(false) @map("is_custom")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  company          Company?          @relation(fields: [companyId], references: [id])
+  rolePermissions  RolePermission[]
+  userCompanyRoles UserCompanyRole[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId Int    @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserCompanyRole {
+  userId    String @map("user_id") @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+  roleId    String @map("role_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+  role    Role    @relation(fields: [roleId], references: [id])
+
+  @@id([userId, companyId])
+  @@map("user_company_roles")
+}
+
+// ==========================================
+// 3. CORE BUSINESS: JOBS & ATS PIPELINE
+// ==========================================
+model Job {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  createdBy   String    @map("created_by") @db.Uuid
+  title       String
+  description String?   @db.Text
+  status      JobStatus @default(DRAFT)
+  salaryMin   Int?     @map("salary_min")
+  salaryMax   Int?     @map("salary_max")
+  requirements String?  @db.Text
+  benefits    String?  @db.Text
+  expiredAt   DateTime? @map("expired_at")
+  deletedAt   DateTime? @map("deleted_at")
+  address     String?
+  province    String?  @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  creator      User          @relation("JobCreator", fields: [createdBy], references: [id])
+  jobSkills    JobSkill[]
+  applications Application[]
+  jobReports   JobReport[]
+
+  @@map("jobs")
+}
+
+model Skill {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  jobSkills JobSkill[]
+
+  @@map("skills")
+}
+
+model JobSkill {
+  jobId   String @map("job_id") @db.Uuid
+  skillId Int    @map("skill_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  job   Job   @relation(fields: [jobId], references: [id])
+  skill Skill @relation(fields: [skillId], references: [id])
+
+  @@id([jobId, skillId])
+  @@map("job_skills")
+}
+
+model Resume {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  fileUrl    String   @map("file_url")
+  publicId   String?  @map("public_id")
+  parsedData Json?    @map("parsed_data")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user         User           @relation(fields: [userId], references: [id])
+  applications Application[]
+  images       ResumeImage[]
+
+  @@map("resumes")
+}
+
+model ResumeImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  resumeId  String   @map("resume_id") @db.Uuid
+  imageUrl  String   @map("image_url")
+  publicId  String   @map("public_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@map("resume_images")
+}
+
+model Application {
+  id        String            @id @default(uuid()) @db.Uuid
+  jobId     String            @map("job_id") @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  resumeId  String            @map("resume_id") @db.Uuid
+  status    ApplicationStatus @default(APPLIED)
+  appliedAt DateTime          @default(now()) @map("applied_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  job    Job    @relation(fields: [jobId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  resume Resume @relation(fields: [resumeId], references: [id])
+  histories ApplicationHistory[]
+
+  @@unique([jobId, userId])
+  @@map("applications")
+}
+
+model ApplicationHistory {
+  id            String            @id @default(uuid()) @db.Uuid
+  applicationId String            @map("application_id") @db.Uuid
+  changedBy     String            @map("changed_by") @db.Uuid
+  fromStatus    ApplicationStatus @map("from_status")
+  toStatus      ApplicationStatus @map("to_status")
+  note          String?           @db.Text
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+  changer     User        @relation(fields: [changedBy], references: [id])
+
+  @@map("application_histories")
+}
+
+model JobReport {
+  id        String       @id @default(uuid()) @db.Uuid
+  jobId     String       @map("job_id") @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  reason    String       @db.Text
+  status    ReportStatus @default(PENDING)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  job  Job  @relation(fields: [jobId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, jobId])
+  @@map("job_reports")
+}

@@ -1,0 +1,30 @@
+==================================================
+TỔNG HỢP KIẾN TRÚC HỆ THỐNG TUYỂN DỤNG (JOB BOARD & ATS)
+==================================================
+
+1. CẤU HÌNH CÔNG NGHỆ VÀ DỰ ÁN (ENTERPRISE-GRADE)
+- Frontend: Next.js (React) với SSR để tối ưu SEO trang chi tiết công việc.
+- Backend: NestJS với cấu trúc Modular (Domain-Driven Design), chia rõ Core, Config, Modules, Infrastructure, Guards.
+- Database: PostgreSQL đảm bảo tính nhất quán (ACID), sử dụng UUIDv4 làm khóa chính.
+- Search Engine: Elasticsearch đồng bộ qua Message Queue (BullMQ) để phục vụ tìm kiếm full-text với độ trễ thấp.
+- Cache & Queue: Redis (cho Session/Token) & BullMQ (xử lý tác vụ ngầm như gửi email, đồng bộ ES).
+- Storage: AWS S3 hoặc Cloudinary (lưu trữ file CV PDF, logo công ty).
+
+2. HỆ THỐNG PHÂN QUYỀN (FINE-GRAINED RBAC + ABAC + MULTI-TENANT)
+Các Role mặc định (System Roles - company_id IS NULL):
+- Admin: Quản lý hệ thống, xử lý báo cáo vi phạm, quản lý Master Data (Skills).
+- Owner: Chủ sở hữu công ty (Tự động gán khi Employer tạo công ty), toàn quyền quản lý nhân sự, tạo custom role, đăng tin.
+- Hiring Manager (Quản lý chuyên môn): Xem CV, tải CV, cập nhật trạng thái ứng tuyển sau phỏng vấn của bộ phận mình.
+- Job Seeker (Ứng viên): Tìm kiếm việc làm, quản lý CV cá nhân, nộp đơn ứng tuyển, theo dõi trạng thái, báo cáo vi phạm.
+
+Custom Roles: Các doanh nghiệp tự định nghĩa chức danh riêng (ví dụ: "Intern HR") với cờ is_custom = true và gắn company_id thực tế.
+
+3. CƠ CHẾ BẢO MẬT & XÁC THỰC (AUTH & SESSIONS)
+- Access Token: Vòng đời ngắn (15 phút).
+- Refresh Token Rotation: Xoay vòng Refresh Token an toàn.
+- Quản lý thiết bị (user_sessions): Lưu device_id, ip_address, user_agent, expires_at, is_revoked để hỗ trợ tính năng đăng xuất từ xa và phát hiện hành vi bất thường.
+
+4. CÁC LUỒNG NGHIỆP VỤ CHÍNH (CORE WORKFLOWS)
+- Luồng Đăng ký & Rẽ nhánh: Người dùng chọn Seeker hoặc Employer ngay lúc đăng ký. Nếu là Employer, hệ thống dùng Database Transaction để đồng thời tạo User, tạo Company, và gán quyền Owner trong bảng user_company_roles.
+- Luồng Đăng tin (Hậu kiểm - Post-moderation): Employer tạo job -> Trạng thái PUBLISHED ngay lập tức -> Đồng bộ lên Elasticsearch -> Ứng viên có thể báo cáo vi phạm -> Admin xử lý takedown (chuyển sang SUSPENDED) nếu vi phạm.
+- Luồng ATS Pipeline: Ứng viên nộp CV -> Lưu S3 -> Parse CV sang JSONB (parsed_data) -> Employer/Hiring Manager review và cập nhật trạng thái ứng tuyển (Applied -> Shortlisted -> Interviewing -> Offered/Rejected) kèm audit log trong application_history
