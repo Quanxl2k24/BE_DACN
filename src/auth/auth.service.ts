@@ -27,6 +27,24 @@ export class AuthService {
     private readonly mailerService: MailerService,
     @InjectRedis() private readonly redis: Redis,
   ) {}
+
+  /**
+   * Frontend và Backend luôn nằm khác domain (localhost:4000 <-> BE deploy,
+   * hoặc vercel.app <-> onrender.com) -> request luôn là cross-site. Cookie
+   * cross-site BẮT BUỘC `SameSite=None` kèm `Secure`, nếu không browser sẽ
+   * không đính kèm cookie ở các request sau (dù vẫn set thành công lúc login).
+   * Chỉ dùng `Lax` khi chạy local (FE và BE cùng "site" localhost, khác port).
+   */
+  private getCookieOptions(maxAge: number) {
+    const isLocalDev = this.configService.get('IS_DEV') === 'true';
+    return {
+      httpOnly: true,
+      secure: !isLocalDev,
+      sameSite: (isLocalDev ? 'lax' : 'none') as 'lax' | 'none',
+      maxAge,
+      path: '/',
+    };
+  }
   async register(body: RegisterReqDTO) {
     try {
       const hashPassword = await argon.hash(body.password);
@@ -76,13 +94,11 @@ export class AuthService {
 
       const { passwordHash, ...user } = existUser;
       const deviceId = crypto.randomUUID();
-      res.cookie('deviceId', deviceId, {
-        httpOnly: true,
-        secure: this.configService.get('IS_DEV') != 'true',
-        sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: '/',
-      });
+      res.cookie(
+        'deviceId',
+        deviceId,
+        this.getCookieOptions(30 * 24 * 60 * 60 * 1000),
+      );
 
       const activeSessions = await this.prismaService.userSession.findMany({
         where: {
@@ -107,20 +123,16 @@ export class AuthService {
       res.clearCookie('accessToken', { path: '/' });
       res.clearCookie('refreshToken', { path: '/' });
 
-      res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: this.configService.get('IS_DEV') != 'true',
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000,
-        path: '/',
-      });
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: this.configService.get('IS_DEV') != 'true',
-        sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: '/',
-      });
+      res.cookie(
+        'accessToken',
+        accessToken,
+        this.getCookieOptions(10 * 60 * 1000),
+      );
+      res.cookie(
+        'refreshToken',
+        refreshToken,
+        this.getCookieOptions(30 * 24 * 60 * 60 * 1000),
+      );
 
       if (activeSessions.length < 3) {
         await this.prismaService.userSession.create({
@@ -254,20 +266,16 @@ export class AuthService {
     res.clearCookie('accessToken', { path: '/' });
     res.clearCookie('refreshToken', { path: '/' });
 
-    res.cookie('accessToken', newAccessToken, {
-      httpOnly: true,
-      secure: this.configService.get('IS_DEV') != 'true',
-      sameSite: 'lax',
-      maxAge: 10 * 60 * 1000,
-      path: '/',
-    });
-    res.cookie('refreshToken', newRefreshToken, {
-      httpOnly: true,
-      secure: this.configService.get('IS_DEV') != 'true',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie(
+      'accessToken',
+      newAccessToken,
+      this.getCookieOptions(10 * 60 * 1000),
+    );
+    res.cookie(
+      'refreshToken',
+      newRefreshToken,
+      this.getCookieOptions(30 * 24 * 60 * 60 * 1000),
+    );
 
     return { message: 'Token đã được làm mới' };
   }
@@ -316,13 +324,11 @@ export class AuthService {
       user.email,
       user.type,
     );
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: this.configService.get('IS_DEV') != 'true',
-      sameSite: 'lax',
-      maxAge: 10 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie(
+      'accessToken',
+      accessToken,
+      this.getCookieOptions(10 * 60 * 1000),
+    );
 
     return {
       data: { user: { id: user.sub, email: user.email } },
