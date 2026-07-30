@@ -47,6 +47,11 @@ import { ApplicationModule } from './application/application.module';
             user: config.get<string>('MAIL_USER'),
             pass: config.get<string>('MAIL_PASS'),
           },
+          tls: {
+            rejectUnauthorized: false,
+          },
+          requireTLS: true,
+          connectionTimeout: 10000,
         },
         defaults: { from: `"No Reply" <${config.get<string>('MAIL_FROM')}>` },
       }),

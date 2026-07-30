@@ -16,6 +16,8 @@ async function bootstrap() {
     credentials: true,
   });
 
+  app.setGlobalPrefix('api/v1');
+
   const config = new DocumentBuilder()
     .setTitle('API Tuyển Dụng')
     .setDescription('Hệ thống quản lý tuyển dụng - Kết nối nhà tuyển dụng và ứng viên')
@@ -38,7 +40,6 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());
   app.use(cookieParser());
-  app.setGlobalPrefix('api/v1');
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
