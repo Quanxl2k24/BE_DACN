@@ -9,6 +9,13 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Frontend (Next.js) gọi API kèm Cookie (accessToken/refreshToken httpOnly)
+  // -> BẮT BUỘC credentials:true và origin đích danh (không được dùng '*').
+  app.enableCors({
+    origin: process.env.FRONTEND_URL ?? 'http://localhost:4000',
+    credentials: true,
+  });
+
   const config = new DocumentBuilder()
     .setTitle('API Tuyển Dụng')
     .setDescription('Hệ thống quản lý tuyển dụng - Kết nối nhà tuyển dụng và ứng viên')
