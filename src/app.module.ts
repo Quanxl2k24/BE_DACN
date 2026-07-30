@@ -52,6 +52,11 @@ import { ApplicationModule } from './application/application.module';
           },
           requireTLS: true,
           connectionTimeout: 10000,
+          // Render's outbound network doesn't route IPv6, but smtp.gmail.com
+          // resolves to both A/AAAA records and Node prefers IPv6 by default,
+          // causing ENETUNREACH. Force IPv4 to avoid that.
+          dnsTimeout: 10000,
+          family: 4,
         },
         defaults: { from: `"No Reply" <${config.get<string>('MAIL_FROM')}>` },
       }),
