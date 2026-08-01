@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   UnauthorizedException,
@@ -148,7 +149,11 @@ export class AuthService {
           },
         });
 
-        return { data: { user }, message: 'Đăng nhập thành công' };
+        return {
+          isVerify: false,
+          data: { user },
+          message: 'Đăng nhập thành công',
+        };
       }
 
       await this.prismaService.userSession.create({
@@ -184,6 +189,7 @@ export class AuthService {
       });
 
       return {
+        isVerify: true,
         data: {
           pendingVerificationId,
           deviceId,
@@ -191,6 +197,9 @@ export class AuthService {
         message: 'Cần xác nhận để đăng nhập',
       };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       console.error('Login error:', error);
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }

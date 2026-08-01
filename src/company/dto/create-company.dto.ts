@@ -42,6 +42,19 @@ export class CreateCompanyDTO {
   @MaxLength(255)
   logoUrl?: string;
 
+
+  @ApiPropertyOptional({ description: 'Quy mô nhân sự', example: '10-50' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  workforceSize?: string;
+
+  @ApiPropertyOptional({ description: 'Năm thành lập', example: '2015' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  youndedYear?: string;
+
   @ApiPropertyOptional({ description: 'Mô tả về công ty', example: 'Công ty hoạt động trong lĩnh vực công nghệ' })
   @IsOptional()
   @IsString()

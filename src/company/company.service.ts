@@ -2,12 +2,13 @@ import {
   BadGatewayException,
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateCompanyDTO } from './dto/create-company.sto';
+import { CreateCompanyDTO } from './dto/create-company.dto';
 import { CreateRoleDTO } from './dto/create-role.dto';
 import { CreateInvitationDTO } from './dto/create-invitation.dto';
 import { UpdateRoleDTO } from './dto/update-role.dto';
@@ -20,8 +21,19 @@ export class CompanyService {
   constructor(
     private prismaService: PrismaService,
     private emailService: EmailService,
-  ) {}
+  ) { }
   async createCompany(body: CreateCompanyDTO, user: Info) {
+    if (body.taxCode) {
+      const existingCompany = await this.prismaService.company.findUnique({
+        where: { taxCode: body.taxCode },
+        select: { id: true },
+      });
+      if (existingCompany) {
+        throw new BadGatewayException(
+          'Mã số thuế đã tồn tại trong hệ thống',
+        );
+      }
+    }
     try {
       let dataCompany: any = null;
       const companyId = crypto.randomUUID();
@@ -36,6 +48,8 @@ export class CompanyService {
             address: body.address,
             website: body.website,
             logoUrl: body.logoUrl,
+            workforceSize: body.workforceSize,
+            youndedYear: body.youndedYear,
             description: body.description,
           },
         });
@@ -58,16 +72,19 @@ export class CompanyService {
         return { data: { dataCompany, message: 'Tạo công ty thành công' } };
       }
     } catch (error: any) {
+      console.log(error)
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error.code === 'P2002') {
-        const target = error.meta?.target as string[] | undefined;
-        if (target?.includes('tax_code')) {
-          throw new BadGatewayException(
-            'Mã số thuế đã tồn tại trong hệ thống',
-          );
+        const target = error.meta?.target as string[] | string | undefined;
+        const targetStr = Array.isArray(target)
+          ? target.join(',')
+          : String(target ?? '');
+        if (targetStr.includes('taxCode') || targetStr.includes('tax_code')) {
+          throw new BadGatewayException('Mã số thuế đã tồn tại trong hệ thống');
         }
-        throw new BadGatewayException(
-          'Người dùng hoặc vai trò không phù hợp',
-        );
+        throw new BadGatewayException('Người dùng hoặc vai trò không phù hợp');
       }
 
       console.error('Prisma error:', error);
@@ -92,6 +109,10 @@ export class CompanyService {
       if (!company) throw new NotFoundException('Không thấy công ty');
       return { data: dataCompany, message: 'Lấy thông tin công ty thành công' };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
       console.log(error);
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
@@ -189,13 +210,17 @@ export class CompanyService {
         },
       });
 
-      if (!roleOfCompany)
+      if (!roleOfCompany) {
         throw new NotFoundException('Không có role nào của công ty này');
+      }
       return {
         data: roleOfCompany,
         message: 'Lấy role của công ty thành công',
       };
     } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       console.log(error);
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
@@ -225,14 +250,18 @@ export class CompanyService {
 
       return { data: company, message: 'Cập nhật công ty thành công' };
     } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error.code === 'P2025')
         throw new NotFoundException('Không tìm thấy công ty này');
       if (error.code === 'P2002') {
-        const target = error.meta?.target as string[] | undefined;
-        if (target?.includes('tax_code')) {
-          throw new BadGatewayException(
-            'Mã số thuế đã tồn tại trong hệ thống',
-          );
+        const target = error.meta?.target as string[] | string | undefined;
+        const targetStr = Array.isArray(target)
+          ? target.join(',')
+          : String(target ?? '');
+        if (targetStr.includes('taxCode') || targetStr.includes('tax_code')) {
+          throw new BadGatewayException('Mã số thuế đã tồn tại trong hệ thống');
         }
       }
       console.log(error);
@@ -322,6 +351,9 @@ export class CompanyService {
 
       return { data: role, message: 'Cập nhật role thành công' };
     } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error.code == 'P2007')
         throw new BadRequestException('Lỗi dữ liệu gửi lên');
       console.error('Update role error:', error);

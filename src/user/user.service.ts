@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -13,7 +11,6 @@ import { UpdateUserReqDTO } from './dto/index';
 export class UserService {
   constructor(private prismaService: PrismaService) {}
   async getProfile(Req: Info) {
-    const id = crypto.randomUUID();
     try {
       const user = await this.prismaService.user.findUniqueOrThrow({
         where: {
@@ -34,7 +31,10 @@ export class UserService {
         message: 'Lấy thông tin thành công',
       };
     } catch (error: any) {
-      throw new NotFoundException('Không có người dùng này');
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Không có người dùng này');
+      }
+      throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
   }
 
@@ -54,7 +54,7 @@ export class UserService {
       };
     } catch (error: any) {
       if (error.code === 'P2025') {
-        throw new BadRequestException('ENgười dùng không tồn tại');
+        throw new NotFoundException('Người dùng không tồn tại');
       }
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
