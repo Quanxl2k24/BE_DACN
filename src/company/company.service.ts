@@ -49,7 +49,8 @@ export class CompanyService {
             website: body.website,
             logoUrl: body.logoUrl,
             workforceSize: body.workforceSize,
-            youndedYear: body.youndedYear,
+            youndedYear: body.youndedYear?.toString(),
+            companyType: body.companyType,
             description: body.description,
           },
         });
@@ -227,6 +228,7 @@ export class CompanyService {
   }
 
   async updateCompany(id: string, body: UpdateCompanyDTO, user: Info) {
+    console.log(">>>.", body)
     try {
       const userRole = await this.prismaService.userCompanyRole.findUnique({
         where: {
@@ -243,9 +245,15 @@ export class CompanyService {
       }
 
       // Cập nhật company
+      const { youndedYear, ...restBody } = body;
       const company = await this.prismaService.company.update({
         where: { id },
-        data: body,
+        data: {
+          ...restBody,
+          ...(youndedYear !== undefined && {
+            youndedYear: youndedYear.toString(),
+          }),
+        },
       });
 
       return { data: company, message: 'Cập nhật công ty thành công' };

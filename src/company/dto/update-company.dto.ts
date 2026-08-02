@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsEmail, IsNumber, IsOptional, IsString, IsUrl, Max, MaxLength, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateCompanyDTO {
@@ -49,20 +49,21 @@ export class UpdateCompanyDTO {
   @MaxLength(255)
   workforceSize?: string;
 
-  @ApiPropertyOptional({ description: 'Năm thành lập', example: '2015' })
+  @ApiPropertyOptional({ description: 'Năm thành lập', example: 2015 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1900)
+  @Max(Number(new Date().getFullYear()))
+  youndedYear?: number;
+
+  @ApiPropertyOptional({ description: 'Loại công ty', example: 'Công nghệ thông tin' })
   @IsOptional()
   @IsString()
-  @MaxLength(10)
-  youndedYear?: string;
+  @MaxLength(100)
+  companyType?: string;
 
   @ApiPropertyOptional({ description: 'Mô tả về công ty', example: 'Công ty hoạt động trong lĩnh vực công nghệ' })
   @IsOptional()
   @IsString()
   description?: string;
-
-  @ApiPropertyOptional({ description: 'Trạng thái công ty', example: 'ACTIVE' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  status?: string;
 }

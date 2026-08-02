@@ -104,7 +104,7 @@ model Company {
   description String?   @db.Text
   workforceSize   String? @db.VarChar(255)
   youndedYear String? @db.VarChar(10)
-  status      String    @default("PENDING") @db.VarChar(50)
+  companyType String? @map("company_type") @db.VarChar(100)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
