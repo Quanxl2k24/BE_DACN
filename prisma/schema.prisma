@@ -17,7 +17,6 @@ datasource db {
 // ==========================================
 enum JobStatus {
   DRAFT
-  PENDING
   PUBLISHED
   CLOSED
   SUSPENDED
@@ -181,7 +180,7 @@ model Job {
   createdBy   String    @map("created_by") @db.Uuid
   title       String
   description String?   @db.Text
-  status      JobStatus @default(DRAFT)
+  status      JobStatus @default(PUBLISHED)
   salaryMin   Int?     @map("salary_min")
   salaryMax   Int?     @map("salary_max")
   requirements String?  @db.Text

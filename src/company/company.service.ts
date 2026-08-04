@@ -491,4 +491,40 @@ export class CompanyService {
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
   }
+
+  async getMember(companyId: string) {
+    try {
+      const member = await this.prismaService.userCompanyRole.findMany({
+        where: {
+          companyId: companyId
+        },
+        select: {
+          companyId: true,
+          user: {
+            select: {
+              id: true, fullName: true, email: true,
+            }
+          },
+          role: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      })
+      const data = member.map(({ companyId, user, role }) => ({
+        companyId,
+        user: {
+          ...user,
+          role,
+        }
+      }))
+      return { data, message: 'Lấy các thành viên trong đội tuyển dụng' };
+    } catch (error: any) {
+      console.log(error)
+      if (error.code == 'P2002') throw new NotFoundException("Không tồn tại id công ty này ")
+      throw new InternalServerErrorException("Đã có lỗi xảy ra")
+    }
+  }
 }

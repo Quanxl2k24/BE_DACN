@@ -46,6 +46,12 @@ export class JobService {
         throw new ForbiddenException('Bạn không có quyền đăng tin tuyển dụng');
       }
 
+      if (body.status === JobStatus.SUSPENDED) {
+        throw new ForbiddenException(
+          'Chỉ admin mới có quyền tạo tin SUSPENDED',
+        );
+      }
+
       const job = await this.prisma.$transaction(async (tx) => {
         const newJob = await tx.job.create({
           data: {
@@ -53,6 +59,7 @@ export class JobService {
             companyId: body.companyId,
             createdBy: user.sub,
             title: body.title,
+            status: body.status ?? JobStatus.PUBLISHED,
             description: body.description ?? null,
             salaryMin: body.salaryMin,
             salaryMax: body.salaryMax,
@@ -107,11 +114,27 @@ export class JobService {
       const existingJob = await this.prisma.job.findUnique({
         where: { id },
       });
-      if (!existingJob) throw new NotFoundException('Tin tuyển dụng không tồn tại');
+      if (!existingJob)
+        throw new NotFoundException('Tin tuyển dụng không tồn tại');
+
+      if (existingJob.status === JobStatus.SUSPENDED) {
+        throw new ForbiddenException(
+          'Tin tuyển dụng đang bị khoá, chỉ admin xử lý qua báo cáo',
+        );
+      }
+
+      if (body.status === JobStatus.SUSPENDED) {
+        throw new ForbiddenException(
+          'Chỉ admin mới có quyền đặt trạng thái SUSPENDED',
+        );
+      }
 
       const userRole = await this.prisma.userCompanyRole.findUnique({
         where: {
-          userId_companyId: { userId: user.sub, companyId: existingJob.companyId },
+          userId_companyId: {
+            userId: user.sub,
+            companyId: existingJob.companyId,
+          },
         },
         include: {
           role: {
@@ -121,29 +144,37 @@ export class JobService {
           },
         },
       });
-      if (!userRole) throw new ForbiddenException('Bạn không thuộc công ty này');
+      if (!userRole)
+        throw new ForbiddenException('Bạn không thuộc công ty này');
 
       const isOwner = userRole.role.name === 'Owner';
       const hasJobUpdatePerm = userRole.role.rolePermissions.some(
         (rp) => rp.permission.code === 'JOB_UPDATE',
       );
       if (!isOwner && !hasJobUpdatePerm) {
-        throw new ForbiddenException('Bạn không có quyền cập nhật tin tuyển dụng');
+        throw new ForbiddenException(
+          'Bạn không có quyền cập nhật tin tuyển dụng',
+        );
       }
 
       const job = await this.prisma.$transaction(async (tx) => {
         const updateData: any = {};
         if (body.title !== undefined) updateData.title = body.title;
-        if (body.description !== undefined) updateData.description = body.description;
+        if (body.description !== undefined)
+          updateData.description = body.description;
         if (body.salaryMin !== undefined) updateData.salaryMin = body.salaryMin;
         if (body.salaryMax !== undefined) updateData.salaryMax = body.salaryMax;
-        if (body.requirements !== undefined) updateData.requirements = body.requirements;
+        if (body.requirements !== undefined)
+          updateData.requirements = body.requirements;
         if (body.benefits !== undefined) updateData.benefits = body.benefits;
         if (body.address !== undefined) updateData.address = body.address;
         if (body.province !== undefined) updateData.province = body.province;
         if (body.expiredAt !== undefined) {
-          updateData.expiredAt = body.expiredAt ? new Date(body.expiredAt) : null;
+          updateData.expiredAt = body.expiredAt
+            ? new Date(body.expiredAt)
+            : null;
         }
+        if (body.status !== undefined) updateData.status = body.status;
 
         if (Object.keys(updateData).length > 0) {
           await tx.job.update({
@@ -214,15 +245,18 @@ export class JobService {
     }
     if (query.salaryFrom) where.salaryMax = { gte: query.salaryFrom };
     if (query.salaryTo) where.salaryMin = { lte: query.salaryTo };
-    if (query.province) where.province = { contains: query.province, mode: 'insensitive' };
+    if (query.province)
+      where.province = { contains: query.province, mode: 'insensitive' };
     if (query.skillIds?.length) {
       where.jobSkills = { some: { skillId: { in: query.skillIds } } };
     }
 
     const orderBy: any =
-      query.sort === 'salary_asc' ? { salaryMin: 'asc' }
-      : query.sort === 'salary_desc' ? { salaryMax: 'desc' }
-      : { createdAt: 'desc' };
+      query.sort === 'salary_asc'
+        ? { salaryMin: 'asc' }
+        : query.sort === 'salary_desc'
+          ? { salaryMax: 'desc' }
+          : { createdAt: 'desc' };
 
     const jobs = await this.prisma.job.findMany({
       take: take + 1,
@@ -249,7 +283,9 @@ export class JobService {
   }
 
   async getCompanyJobs(companyId: string, user: Info, query: QueryJobsDTO) {
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) throw new NotFoundException('Công ty không tồn tại');
 
     const userRole = await this.prisma.userCompanyRole.findUnique({
@@ -270,6 +306,15 @@ export class JobService {
       throw new ForbiddenException('Bạn không có quyền xem tin tuyển dụng');
     }
 
+    await this.prisma.job.updateMany({
+      where: {
+        companyId,
+        status: JobStatus.PUBLISHED,
+        expiredAt: { lt: new Date() },
+      },
+      data: { status: JobStatus.CLOSED },
+    });
+
     const take = query.take ?? 20;
     const where: any = { companyId, deletedAt: null };
 
@@ -282,15 +327,18 @@ export class JobService {
     if (query.status) where.status = query.status;
     if (query.salaryFrom) where.salaryMax = { gte: query.salaryFrom };
     if (query.salaryTo) where.salaryMin = { lte: query.salaryTo };
-    if (query.province) where.province = { contains: query.province, mode: 'insensitive' };
+    if (query.province)
+      where.province = { contains: query.province, mode: 'insensitive' };
     if (query.skillIds?.length) {
       where.jobSkills = { some: { skillId: { in: query.skillIds } } };
     }
 
     const orderBy: any =
-      query.sort === 'salary_asc' ? { salaryMin: 'asc' }
-      : query.sort === 'salary_desc' ? { salaryMax: 'desc' }
-      : { createdAt: 'desc' };
+      query.sort === 'salary_asc'
+        ? { salaryMin: 'asc' }
+        : query.sort === 'salary_desc'
+          ? { salaryMax: 'desc' }
+          : { createdAt: 'desc' };
 
     const jobs = await this.prisma.job.findMany({
       take: take + 1,
@@ -398,12 +446,17 @@ export class JobService {
       const existingJob = await this.prisma.job.findUnique({
         where: { id },
       });
-      if (!existingJob) throw new NotFoundException('Tin tuyển dụng không tồn tại');
-      if (existingJob.deletedAt) throw new NotFoundException('Tin tuyển dụng không tồn tại');
+      if (!existingJob)
+        throw new NotFoundException('Tin tuyển dụng không tồn tại');
+      if (existingJob.deletedAt)
+        throw new NotFoundException('Tin tuyển dụng không tồn tại');
 
       const userRole = await this.prisma.userCompanyRole.findUnique({
         where: {
-          userId_companyId: { userId: user.sub, companyId: existingJob.companyId },
+          userId_companyId: {
+            userId: user.sub,
+            companyId: existingJob.companyId,
+          },
         },
         include: {
           role: {
@@ -413,7 +466,8 @@ export class JobService {
           },
         },
       });
-      if (!userRole) throw new ForbiddenException('Bạn không thuộc công ty này');
+      if (!userRole)
+        throw new ForbiddenException('Bạn không thuộc công ty này');
 
       const isOwner = userRole.role.name === 'Owner';
       const hasJobDeletePerm = userRole.role.rolePermissions.some(

@@ -23,7 +23,7 @@ import { UpdateCompanyDTO } from './dto/update-company.dto';
 @ApiTags('Company - Công ty')
 @Controller('company')
 export class CompanyController {
-  constructor(private companyService: CompanyService) {}
+  constructor(private companyService: CompanyService) { }
 
   @Post('create-company')
   @UseGuards(AccessTokenGuard)
@@ -124,5 +124,13 @@ export class CompanyController {
     @Req() req: Request,
   ) {
     return this.companyService.inviteUser(companyId, body, req.user!);
+  }
+
+  @Get(':companyId/get-member')
+  @UseGuards(AccessTokenGuard)
+  @ApiBearerAuth()
+  @Roles('RECRUITER')
+  getMember(@Param('companyId') companyId: string) {
+    return this.companyService.getMember(companyId)
   }
 }

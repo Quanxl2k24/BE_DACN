@@ -44,7 +44,7 @@ export class JobReportService {
   }
 
   async findAll(user: Info, cursor?: string, take = 20) {
-    if (user.type == "ADMIN") throw new ForbiddenException("Bạn không có quyền truy cập")
+    if (user.type !== "ADMIN") throw new ForbiddenException("Bạn không có quyền truy cập")
     const reports = await this.prisma.jobReport.findMany({
       take: take + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
@@ -63,7 +63,7 @@ export class JobReportService {
   }
 
   async update(user: Info, id: string, body: UpdateJobReportDTO) {
-    if (user.type == "ADMIN") throw new ForbiddenException("Bạn không có quyền truy cập")
+    if (user.type !== "ADMIN") throw new ForbiddenException("Bạn không có quyền truy cập")
     try {
       const report = await this.prisma.jobReport.findUnique({
         where: { id },
