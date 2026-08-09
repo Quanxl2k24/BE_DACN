@@ -11,6 +11,7 @@ import { Info } from 'src/common/interfaces/info-token.interface';
 import { EmailService } from 'src/email/email.service';
 import { CreateApplicationDTO } from './dto/create-application.dto';
 import { QueryApplicationsDTO } from './dto/query-applications.dto';
+import { QueryMyApplicationsDTO } from './dto/query-my-applications.dto';
 import { UpdateApplicationStatusDTO } from './dto/update-application-status.dto';
 
 const VALID_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
@@ -237,6 +238,132 @@ export class ApplicationService {
         error instanceof ForbiddenException
       ) throw error;
       console.error('Update application status error:', error);
+      throw new InternalServerErrorException('Đã có lỗi xảy ra');
+    }
+  }
+
+  async getMyApplications(user: Info, query: QueryMyApplicationsDTO) {
+    const take = query.take ?? 20;
+
+    const applications = await this.prisma.application.findMany({
+      take: take + 1,
+      ...(query.cursor && { cursor: { id: query.cursor }, skip: 1 }),
+      where: { userId: user.sub },
+      orderBy: { appliedAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        appliedAt: true,
+        job: {
+          select: {
+            id: true,
+            title: true,
+            company: { select: { id: true, name: true, logoUrl: true } },
+          },
+        },
+      },
+    });
+
+    const hasMore = applications.length > take;
+    const items = hasMore ? applications.slice(0, take) : applications;
+
+    const data = items.map((application) => ({
+      applicationId: application.id,
+      jobId: application.job.id,
+      jobTitle: application.job.title,
+      companyName: application.job.company.name,
+      companyLogoUrl: application.job.company.logoUrl,
+      appliedAt: application.appliedAt,
+      status: application.status,
+    }));
+
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    return { data, pagination: { nextCursor, hasMore } };
+  }
+
+  async getApplicationStatusTimeline(jobId: string, user: Info) {
+    try {
+      const application = await this.prisma.application.findUnique({
+        where: { jobId_userId: { jobId, userId: user.sub } },
+        include: {
+          job: { select: { id: true, title: true } },
+          histories: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+      if (!application) {
+        throw new NotFoundException('Bạn chưa ứng tuyển vào tin tuyển dụng này');
+      }
+
+      const firstHistoryByStatus = new Map<ApplicationStatus, (typeof application.histories)[number]>();
+      for (const history of application.histories) {
+        if (!firstHistoryByStatus.has(history.toStatus)) {
+          firstHistoryByStatus.set(history.toStatus, history);
+        }
+      }
+
+      const offeredEntry = firstHistoryByStatus.get(ApplicationStatus.OFFERED);
+      const rejectedEntry = firstHistoryByStatus.get(ApplicationStatus.REJECTED);
+
+      const steps = [
+        {
+          key: 'APPLIED',
+          label: 'Đã ứng tuyển',
+          reached: true,
+          note: null as string | null,
+          at: application.appliedAt as Date | null,
+        },
+        {
+          key: 'SCREENING',
+          label: 'Đang xem xét',
+          reached: firstHistoryByStatus.has(ApplicationStatus.SCREENING),
+          note: firstHistoryByStatus.get(ApplicationStatus.SCREENING)?.note ?? null,
+          at: firstHistoryByStatus.get(ApplicationStatus.SCREENING)?.createdAt ?? null,
+        },
+        {
+          key: 'INTERVIEW',
+          label: 'Mời phỏng vấn',
+          reached: firstHistoryByStatus.has(ApplicationStatus.INTERVIEW),
+          note: firstHistoryByStatus.get(ApplicationStatus.INTERVIEW)?.note ?? null,
+          at: firstHistoryByStatus.get(ApplicationStatus.INTERVIEW)?.createdAt ?? null,
+        },
+        {
+          key: 'INTERVIEW_PASSED',
+          label: 'Đạt phỏng vấn',
+          reached: !!offeredEntry,
+          note: offeredEntry?.note ?? null,
+          at: offeredEntry?.createdAt ?? null,
+        },
+        {
+          key: 'OFFERED',
+          label: 'Offer',
+          reached: !!offeredEntry,
+          note: offeredEntry?.note ?? null,
+          at: offeredEntry?.createdAt ?? null,
+        },
+        {
+          key: 'HIRED',
+          label: 'Ứng tuyển thành công',
+          reached: firstHistoryByStatus.has(ApplicationStatus.HIRED),
+          note: firstHistoryByStatus.get(ApplicationStatus.HIRED)?.note ?? null,
+          at: firstHistoryByStatus.get(ApplicationStatus.HIRED)?.createdAt ?? null,
+        },
+      ];
+
+      return {
+        data: {
+          jobId: application.job.id,
+          jobTitle: application.job.title,
+          currentStatus: application.status,
+          isRejected: application.status === ApplicationStatus.REJECTED,
+          rejectedNote: rejectedEntry?.note ?? null,
+          rejectedAt: rejectedEntry?.createdAt ?? null,
+          steps,
+        },
+      };
+    } catch (error: any) {
+      if (error instanceof NotFoundException) throw error;
+      console.error('Get application status timeline error:', error);
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
   }

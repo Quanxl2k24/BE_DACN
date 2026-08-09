@@ -71,4 +71,9 @@ export class UpdateJobDTO {
   @IsString()
   @MaxLength(100)
   province?: string;
+
+  @ApiPropertyOptional({ description: 'ID danh mục ngành nghề', example: 1 })
+  @IsOptional()
+  @IsInt()
+  categoryId?: number;
 }

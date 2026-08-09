@@ -56,4 +56,10 @@ export class QueryJobsDTO {
   @Min(1)
   @Max(50)
   take?: number;
+
+  @ApiPropertyOptional({ description: 'Lọc theo ID danh mục ngành nghề', example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  categoryId?: number;
 }

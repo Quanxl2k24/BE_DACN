@@ -15,6 +15,8 @@ import { SkillsModule } from './skills/skills.module';
 import { JobReportModule } from './job-report/job-report.module';
 import { UploadModule } from './upload/upload.module';
 import { ApplicationModule } from './application/application.module';
+import { CandidatesModule } from './candidates/candidates.module';
+import { JobCategoryModule } from './job-category/job-category.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -72,6 +74,8 @@ import { ApplicationModule } from './application/application.module';
     JobReportModule,
     UploadModule,
     ApplicationModule,
+    CandidatesModule,
+    JobCategoryModule,
   ],
   providers: [AppService],
 })

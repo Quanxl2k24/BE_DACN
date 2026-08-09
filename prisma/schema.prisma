@@ -9,7 +9,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-
 }
 
 // ==========================================
@@ -37,10 +36,21 @@ enum ApplicationStatus {
   REJECTED
 }
 
+enum InterviewMode {
+  ONLINE
+  OFFLINE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
 enum UserType {
-  APPLICANT   // Người ứng tuyển
-  RECRUITER   // Người tuyển dụng
-  ADMIN       // Quản trị viên hệ thống
+  APPLICANT // Người ứng tuyển
+  RECRUITER // Người tuyển dụng
+  ADMIN // Quản trị viên hệ thống
 }
 
 // ==========================================
@@ -59,13 +69,15 @@ model User {
   deletedAt    DateTime? @map("deleted_at") // Soft delete
 
   // Quan hệ (Relations)
-  sessions         UserSession[]
-  userCompanyRoles UserCompanyRole[]
-  jobsCreated      Job[]             @relation("JobCreator")
-  resumes          Resume[]
-  applications     Application[]
-  applicationHistories ApplicationHistory[]
-  jobReports       JobReport[]
+  sessions                UserSession[]
+  userCompanyRoles        UserCompanyRole[]
+  jobsCreated             Job[]                @relation("JobCreator")
+  resumes                 Resume[]
+  applications            Application[]
+  applicationHistories    ApplicationHistory[]
+  jobReports              JobReport[]
+  interviewsAsInterviewer Interview[]          @relation("InterviewInterviewer")
+  interviewsScheduled     Interview[]          @relation("InterviewScheduler")
 
   @@map("users")
 }
@@ -92,21 +104,21 @@ model UserSession {
 // 2. FINE-GRAINED RBAC & MULTI-TENANT
 // ==========================================
 model Company {
-  id          String    @id @default(uuid()) @db.Uuid
-  name        String    @db.VarChar(255)
-  taxCode     String?   @unique @map("tax_code") @db.VarChar(50)
-  email       String?   @db.VarChar(255)
-  phone       String?   @db.VarChar(50)
-  address     String?   @db.Text
-  website     String?   @db.VarChar(255)
-  logoUrl     String?   @map("logo_url") @db.VarChar(255)
-  description String?   @db.Text
-  workforceSize   String? @db.VarChar(255)
-  youndedYear String? @db.VarChar(10)
-  companyType String? @map("company_type") @db.VarChar(100)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String    @db.VarChar(255)
+  taxCode       String?   @unique @map("tax_code") @db.VarChar(50)
+  email         String?   @db.VarChar(255)
+  phone         String?   @db.VarChar(50)
+  address       String?   @db.Text
+  website       String?   @db.VarChar(255)
+  logoUrl       String?   @map("logo_url") @db.VarChar(255)
+  description   String?   @db.Text
+  workforceSize String?   @db.VarChar(255)
+  youndedYear   String?   @db.VarChar(10)
+  companyType   String?   @map("company_type") @db.VarChar(100)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
 
   roles            Role[]
   userCompanyRoles UserCompanyRole[]
@@ -116,12 +128,12 @@ model Company {
 }
 
 model Permission {
-  id          Int     @id @default(autoincrement())
-  code        String  @unique // Ví dụ: VIEW_CV, DOWNLOAD_CV
+  id          Int      @id @default(autoincrement())
+  code        String   @unique // Ví dụ: VIEW_CV, DOWNLOAD_CV
   module      String?
   description String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   rolePermissions RolePermission[]
 
@@ -129,12 +141,12 @@ model Permission {
 }
 
 model Role {
-  id        String  @id @default(uuid()) @db.Uuid
-  companyId String? @map("company_id") @db.Uuid // Null nếu là System Role
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String?  @map("company_id") @db.Uuid // Null nếu là System Role
   name      String
-  isCustom  Boolean @default(false) @map("is_custom")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  isCustom  Boolean  @default(false) @map("is_custom")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   company          Company?          @relation(fields: [companyId], references: [id])
   rolePermissions  RolePermission[]
@@ -144,8 +156,8 @@ model Role {
 }
 
 model RolePermission {
-  roleId       String @map("role_id") @db.Uuid
-  permissionId Int    @map("permission_id")
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId Int      @map("permission_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -157,11 +169,11 @@ model RolePermission {
 }
 
 model UserCompanyRole {
-  userId    String @map("user_id") @db.Uuid
-  companyId String @map("company_id") @db.Uuid
-  roleId    String @map("role_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  userId    String   @map("user_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user    User    @relation(fields: [userId], references: [id])
   company Company @relation(fields: [companyId], references: [id])
@@ -175,25 +187,27 @@ model UserCompanyRole {
 // 3. CORE BUSINESS: JOBS & ATS PIPELINE
 // ==========================================
 model Job {
-  id          String    @id @default(uuid()) @db.Uuid
-  companyId   String    @map("company_id") @db.Uuid
-  createdBy   String    @map("created_by") @db.Uuid
-  title       String
-  description String?   @db.Text
-  status      JobStatus @default(PUBLISHED)
-  salaryMin   Int?     @map("salary_min")
-  salaryMax   Int?     @map("salary_max")
-  requirements String?  @db.Text
-  benefits    String?  @db.Text
-  expiredAt   DateTime? @map("expired_at")
-  deletedAt   DateTime? @map("deleted_at")
-  address     String?
-  province    String?  @db.VarChar(100)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String    @id @default(uuid()) @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  createdBy      String    @map("created_by") @db.Uuid
+  jobCategoryId  Int?      @map("job_category_id")
+  title          String
+  description    String?   @db.Text
+  status         JobStatus @default(PUBLISHED)
+  salaryMin      Int?      @map("salary_min")
+  salaryMax      Int?      @map("salary_max")
+  requirements   String?   @db.Text
+  benefits       String?   @db.Text
+  expiredAt      DateTime? @map("expired_at")
+  deletedAt      DateTime? @map("deleted_at")
+  address        String?
+  province       String?   @db.VarChar(100)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   company      Company       @relation(fields: [companyId], references: [id])
   creator      User          @relation("JobCreator", fields: [createdBy], references: [id])
+  category     JobCategory?  @relation(fields: [jobCategoryId], references: [id])
   jobSkills    JobSkill[]
   applications Application[]
   jobReports   JobReport[]
@@ -201,11 +215,23 @@ model Job {
   @@map("jobs")
 }
 
+model JobCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  jobs Job[]
+
+  @@map("job_categories")
+}
+
 model Skill {
-  id   Int    @id @default(autoincrement())
-  name String @unique
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   jobSkills JobSkill[]
 
@@ -213,10 +239,10 @@ model Skill {
 }
 
 model JobSkill {
-  jobId   String @map("job_id") @db.Uuid
-  skillId Int    @map("skill_id")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  jobId     String   @map("job_id") @db.Uuid
+  skillId   Int      @map("skill_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   job   Job   @relation(fields: [jobId], references: [id])
   skill Skill @relation(fields: [skillId], references: [id])
@@ -234,7 +260,7 @@ model Resume {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  user         User           @relation(fields: [userId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
   applications Application[]
   images       ResumeImage[]
 
@@ -260,16 +286,37 @@ model Application {
   resumeId  String            @map("resume_id") @db.Uuid
   status    ApplicationStatus @default(APPLIED)
   appliedAt DateTime          @default(now()) @map("applied_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
 
-  job    Job    @relation(fields: [jobId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
-  resume Resume @relation(fields: [resumeId], references: [id])
-  histories ApplicationHistory[]
+  job        Job                  @relation(fields: [jobId], references: [id])
+  user       User                 @relation(fields: [userId], references: [id])
+  resume     Resume               @relation(fields: [resumeId], references: [id])
+  histories  ApplicationHistory[]
+  interviews Interview[]
 
   @@unique([jobId, userId])
   @@map("applications")
+}
+
+model Interview {
+  id            String          @id @default(uuid()) @db.Uuid
+  applicationId String          @map("application_id") @db.Uuid
+  interviewerId String          @map("interviewer_id") @db.Uuid
+  scheduledBy   String          @map("scheduled_by") @db.Uuid
+  mode          InterviewMode
+  location      String          @db.Text
+  scheduledAt   DateTime        @map("scheduled_at")
+  note          String?         @db.Text
+  status        InterviewStatus @default(SCHEDULED)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+  interviewer User        @relation("InterviewInterviewer", fields: [interviewerId], references: [id])
+  scheduler   User        @relation("InterviewScheduler", fields: [scheduledBy], references: [id])
+
+  @@map("interviews")
 }
 
 model ApplicationHistory {

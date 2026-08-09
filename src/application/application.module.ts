@@ -8,5 +8,6 @@ import { ApplicationService } from './application.service';
   imports: [AuthModule, EmailModule],
   controllers: [ApplicationController],
   providers: [ApplicationService],
+  exports: [ApplicationService],
 })
 export class ApplicationModule {}

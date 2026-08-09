@@ -52,6 +52,15 @@ export class JobService {
         );
       }
 
+      if (body.categoryId !== undefined) {
+        const category = await this.prisma.jobCategory.findUnique({
+          where: { id: body.categoryId },
+        });
+        if (!category || !category.active) {
+          throw new NotFoundException('Danh mục ngành nghề không tồn tại');
+        }
+      }
+
       const job = await this.prisma.$transaction(async (tx) => {
         const newJob = await tx.job.create({
           data: {
@@ -68,6 +77,7 @@ export class JobService {
             address: body.address ?? null,
             province: body.province ?? null,
             expiredAt: body.expiredAt ? new Date(body.expiredAt) : null,
+            jobCategoryId: body.categoryId ?? null,
           },
         });
 
@@ -93,6 +103,7 @@ export class JobService {
           include: {
             company: { select: { id: true, name: true, logoUrl: true } },
             jobSkills: { include: { skill: true } },
+            category: { select: { id: true, name: true } },
           },
         });
       });
@@ -157,6 +168,15 @@ export class JobService {
         );
       }
 
+      if (body.categoryId !== undefined) {
+        const category = await this.prisma.jobCategory.findUnique({
+          where: { id: body.categoryId },
+        });
+        if (!category || !category.active) {
+          throw new NotFoundException('Danh mục ngành nghề không tồn tại');
+        }
+      }
+
       const job = await this.prisma.$transaction(async (tx) => {
         const updateData: any = {};
         if (body.title !== undefined) updateData.title = body.title;
@@ -175,6 +195,8 @@ export class JobService {
             : null;
         }
         if (body.status !== undefined) updateData.status = body.status;
+        if (body.categoryId !== undefined)
+          updateData.jobCategoryId = body.categoryId;
 
         if (Object.keys(updateData).length > 0) {
           await tx.job.update({
@@ -209,6 +231,7 @@ export class JobService {
           include: {
             company: { select: { id: true, name: true, logoUrl: true } },
             jobSkills: { include: { skill: true } },
+            category: { select: { id: true, name: true } },
           },
         });
       });
@@ -250,6 +273,7 @@ export class JobService {
     if (query.skillIds?.length) {
       where.jobSkills = { some: { skillId: { in: query.skillIds } } };
     }
+    if (query.categoryId) where.jobCategoryId = query.categoryId;
 
     const orderBy: any =
       query.sort === 'salary_asc'
@@ -272,6 +296,7 @@ export class JobService {
         province: true,
         createdAt: true,
         company: { select: { name: true, logoUrl: true } },
+        category: { select: { id: true, name: true } },
       },
     });
 
@@ -332,6 +357,7 @@ export class JobService {
     if (query.skillIds?.length) {
       where.jobSkills = { some: { skillId: { in: query.skillIds } } };
     }
+    if (query.categoryId) where.jobCategoryId = query.categoryId;
 
     const orderBy: any =
       query.sort === 'salary_asc'
@@ -354,7 +380,10 @@ export class JobService {
         province: true,
         createdAt: true,
         status: true,
+        expiredAt: true,
         company: { select: { name: true, logoUrl: true } },
+        category: { select: { id: true, name: true } },
+        _count: { select: { applications: true } },
       },
     });
 
@@ -382,6 +411,7 @@ export class JobService {
           },
         },
         jobSkills: { include: { skill: true } },
+        category: { select: { id: true, name: true } },
       },
     });
 
@@ -411,6 +441,7 @@ export class JobService {
           },
         },
         jobSkills: { include: { skill: true } },
+        category: { select: { id: true, name: true } },
         creator: { select: { id: true, fullName: true, email: true } },
         _count: { select: { applications: true } },
       },
