@@ -7,6 +7,7 @@ import { CreateApplicationDTO } from './dto/create-application.dto';
 import { UpdateApplicationStatusDTO } from './dto/update-application-status.dto';
 import { QueryApplicationsDTO } from './dto/query-applications.dto';
 import { QueryMyApplicationsDTO } from './dto/query-my-applications.dto';
+import { RespondToOfferDTO } from './dto/respond-to-offer.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import type { Request } from 'express';
 
@@ -49,6 +50,23 @@ export class ApplicationController {
   })
   getApplicationStatus(@Param('id') id: string, @Req() req: Request) {
     return this.applicationService.getApplicationStatusTimeline(id, req.user!);
+  }
+
+  @Patch(':id/offer/respond')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles('APPLICANT')
+  @ApiBearerAuth()
+  @ApiParam({ name: 'id', description: 'ID tin tuyển dụng' })
+  @ApiOperation({
+    summary: 'Phản hồi lời mời nhận việc',
+    description: 'Ứng viên chấp nhận hoặc từ chối lời mời nhận việc. Chấp nhận sẽ chuyển đơn sang HIRED, từ chối sẽ chuyển sang REJECTED.',
+  })
+  respondToOffer(
+    @Param('id') id: string,
+    @Body() body: RespondToOfferDTO,
+    @Req() req: Request,
+  ) {
+    return this.applicationService.respondToOffer(id, req.user!, body);
   }
 
   @Get('manage/:companyId/applications')

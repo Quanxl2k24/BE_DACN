@@ -5,8 +5,12 @@ import {
   EMAIL_QUEUE,
   SEND_INVITATION_JOB,
   APPLICATION_STATUS_CHANGE_JOB,
+  OFFER_EXTENDED_JOB,
+  OFFER_RESPONDED_JOB,
   InvitationJobData,
   StatusChangeJobData,
+  OfferExtendedJobData,
+  OfferRespondedJobData,
 } from './email.constant';
 
 @Injectable()
@@ -19,5 +23,13 @@ export class EmailService {
 
   async sendStatusChangeEmail(data: StatusChangeJobData) {
     await this.emailQueue.add(APPLICATION_STATUS_CHANGE_JOB, data);
+  }
+
+  async sendOfferExtendedEmail(data: OfferExtendedJobData) {
+    await this.emailQueue.add(OFFER_EXTENDED_JOB, data);
+  }
+
+  async sendOfferRespondedEmail(data: OfferRespondedJobData) {
+    await this.emailQueue.add(OFFER_RESPONDED_JOB, data);
   }
 }

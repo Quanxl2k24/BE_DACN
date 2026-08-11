@@ -47,6 +47,12 @@ enum InterviewStatus {
   CANCELLED
 }
 
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 enum UserType {
   APPLICANT // Người ứng tuyển
   RECRUITER // Người tuyển dụng
@@ -78,6 +84,7 @@ model User {
   jobReports              JobReport[]
   interviewsAsInterviewer Interview[]          @relation("InterviewInterviewer")
   interviewsScheduled     Interview[]          @relation("InterviewScheduler")
+  offersCreated           Offer[]
 
   @@map("users")
 }
@@ -294,6 +301,7 @@ model Application {
   resume     Resume               @relation(fields: [resumeId], references: [id])
   histories  ApplicationHistory[]
   interviews Interview[]
+  offer      Offer?
 
   @@unique([jobId, userId])
   @@map("applications")
@@ -317,6 +325,25 @@ model Interview {
   scheduler   User        @relation("InterviewScheduler", fields: [scheduledBy], references: [id])
 
   @@map("interviews")
+}
+
+model Offer {
+  id               String      @id @default(uuid()) @db.Uuid
+  applicationId    String      @unique @map("application_id") @db.Uuid
+  salary           Int
+  startDate        DateTime?   @map("start_date")
+  responseDeadline DateTime?   @map("response_deadline")
+  note             String?     @db.Text
+  status           OfferStatus @default(PENDING)
+  createdBy        String      @map("created_by") @db.Uuid
+  respondedAt      DateTime?   @map("responded_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+  creator     User        @relation(fields: [createdBy], references: [id])
+
+  @@map("offers")
 }
 
 model ApplicationHistory {

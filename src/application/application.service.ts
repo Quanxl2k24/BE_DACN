@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { ApplicationStatus, JobStatus } from '@prisma/client';
+import { ApplicationStatus, JobStatus, OfferStatus } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Info } from 'src/common/interfaces/info-token.interface';
 import { EmailService } from 'src/email/email.service';
@@ -13,6 +13,7 @@ import { CreateApplicationDTO } from './dto/create-application.dto';
 import { QueryApplicationsDTO } from './dto/query-applications.dto';
 import { QueryMyApplicationsDTO } from './dto/query-my-applications.dto';
 import { UpdateApplicationStatusDTO } from './dto/update-application-status.dto';
+import { OfferDecision, RespondToOfferDTO } from './dto/respond-to-offer.dto';
 
 const VALID_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
   [ApplicationStatus.APPLIED]: [ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW, ApplicationStatus.REJECTED],
@@ -289,6 +290,7 @@ export class ApplicationService {
         include: {
           job: { select: { id: true, title: true } },
           histories: { orderBy: { createdAt: 'asc' } },
+          offer: true,
         },
       });
       if (!application) {
@@ -359,11 +361,85 @@ export class ApplicationService {
           rejectedNote: rejectedEntry?.note ?? null,
           rejectedAt: rejectedEntry?.createdAt ?? null,
           steps,
+          offer: application.offer,
         },
       };
     } catch (error: any) {
       if (error instanceof NotFoundException) throw error;
       console.error('Get application status timeline error:', error);
+      throw new InternalServerErrorException('Đã có lỗi xảy ra');
+    }
+  }
+
+  async respondToOffer(jobId: string, user: Info, body: RespondToOfferDTO) {
+    try {
+      const application = await this.prisma.application.findUnique({
+        where: { jobId_userId: { jobId, userId: user.sub } },
+        include: { job: true, offer: { include: { creator: true } }, user: true },
+      });
+      if (!application || !application.offer) {
+        throw new NotFoundException('Không tìm thấy lời mời nhận việc cho tin tuyển dụng này');
+      }
+
+      const { offer } = application;
+
+      if (offer.status !== OfferStatus.PENDING) {
+        throw new BadRequestException('Lời mời đã được phản hồi trước đó');
+      }
+      if (offer.responseDeadline && offer.responseDeadline < new Date()) {
+        throw new BadRequestException('Lời mời đã hết hạn phản hồi');
+      }
+
+      const targetStatus =
+        body.decision === OfferDecision.ACCEPTED
+          ? ApplicationStatus.HIRED
+          : ApplicationStatus.REJECTED;
+      const offerStatus =
+        body.decision === OfferDecision.ACCEPTED ? OfferStatus.ACCEPTED : OfferStatus.DECLINED;
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const updatedOffer = await tx.offer.update({
+          where: { id: offer.id },
+          data: { status: offerStatus, respondedAt: new Date() },
+        });
+
+        const updatedApplication = await tx.application.update({
+          where: { id: application.id },
+          data: { status: targetStatus },
+        });
+
+        await tx.applicationHistory.create({
+          data: {
+            applicationId: application.id,
+            changedBy: user.sub,
+            fromStatus: application.status,
+            toStatus: targetStatus,
+            note:
+              body.decision === OfferDecision.ACCEPTED
+                ? 'Ứng viên chấp nhận lời mời'
+                : 'Ứng viên từ chối lời mời',
+          },
+        });
+
+        return { application: updatedApplication, offer: updatedOffer };
+      });
+
+      try {
+        await this.emailService.sendOfferRespondedEmail({
+          to: offer.creator.email,
+          toName: offer.creator.fullName,
+          jobTitle: application.job.title,
+          candidateName: application.user.fullName,
+          decision: body.decision,
+        });
+      } catch (emailError) {
+        console.error('Send offer responded email failed:', emailError);
+      }
+
+      return { data: result, message: 'Đã ghi nhận phản hồi' };
+    } catch (error: any) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      console.error('Respond to offer error:', error);
       throw new InternalServerErrorException('Đã có lỗi xảy ra');
     }
   }

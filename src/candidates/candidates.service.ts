@@ -1,12 +1,20 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
-import { ApplicationStatus, JobStatus } from "@prisma/client";
+import { ApplicationStatus, InterviewStatus, JobStatus, OfferStatus } from "@prisma/client";
 import { PrismaService } from "src/prisma/prisma.service";
 import { Info } from "src/common/interfaces/info-token.interface";
 import { ApplicationService } from "src/application/application.service";
+import { EmailService } from "src/email/email.service";
 import { UpdateApplicationStatusDTO } from "src/application/dto/update-application-status.dto";
 import { QueryCandidatesDTO } from "./dto/query-candidates.dto";
 import { CreateInterviewDTO } from "./dto/create-interview.dto";
 import { QueryInterviewsDTO } from "./dto/query-interviews.dto";
+import { InterviewResultInput, UpdateInterviewResultDTO } from "./dto/update-interview-result.dto";
+import { CreateOfferDTO } from "./dto/create-offer.dto";
+
+const INTERVIEW_RESULT_TO_STATUS: Record<InterviewResultInput, ApplicationStatus> = {
+    [InterviewResultInput.PASSED]: ApplicationStatus.OFFERED,
+    [InterviewResultInput.FAILED]: ApplicationStatus.REJECTED,
+};
 
 const PASSED_STATUSES: ApplicationStatus[] = [ApplicationStatus.OFFERED, ApplicationStatus.HIRED];
 
@@ -39,6 +47,7 @@ export class CandidatesService {
     constructor(
         private prismaService: PrismaService,
         private applicationService: ApplicationService,
+        private emailService: EmailService,
     ) { }
 
     async getCandidates(companyId: string, user: Info, query: QueryCandidatesDTO) {
@@ -307,6 +316,168 @@ export class CandidatesService {
         } catch (error: any) {
             if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
             console.error('Get interviews error:', error);
+            throw new InternalServerErrorException("Đã có lỗi xảy ra");
+        }
+    }
+
+    async updateInterviewResult(
+        companyId: string,
+        interviewId: string,
+        body: UpdateInterviewResultDTO,
+        user: Info,
+    ) {
+        try {
+            const interview = await this.prismaService.interview.findUnique({
+                where: { id: interviewId },
+                include: { application: { include: { job: true } } },
+            });
+            if (!interview || interview.application.job.companyId !== companyId) {
+                throw new NotFoundException('Lịch phỏng vấn không tồn tại trong công ty này');
+            }
+
+            const targetStatus = INTERVIEW_RESULT_TO_STATUS[body.result];
+
+            // Tái sử dụng luồng cập nhật trạng thái đơn ứng tuyển đã có sẵn:
+            // kiểm tra quyền APPLICATION_STATUS_UPDATE, validate chuyển trạng thái
+            // hợp lệ, ghi ApplicationHistory, gửi email thông báo cho ứng viên.
+            const statusUpdateResult = await this.applicationService.updateApplicationStatus(
+                companyId,
+                interview.applicationId,
+                { status: targetStatus },
+                user,
+            );
+
+            const updatedInterview = await this.prismaService.interview.update({
+                where: { id: interviewId },
+                data: { status: InterviewStatus.COMPLETED },
+            });
+
+            return {
+                data: { interview: updatedInterview, application: statusUpdateResult.data },
+                message: 'Cập nhật kết quả phỏng vấn thành công',
+            };
+        } catch (error: any) {
+            if (error instanceof BadRequestException || error instanceof NotFoundException || error instanceof ForbiddenException) throw error;
+            console.error('Update interview result error:', error);
+            throw new InternalServerErrorException("Đã có lỗi xảy ra");
+        }
+    }
+
+    async createOrUpdateOffer(
+        companyId: string,
+        applicationId: string,
+        body: CreateOfferDTO,
+        user: Info,
+    ) {
+        try {
+            const application = await this.prismaService.application.findUnique({
+                where: { id: applicationId },
+                include: { job: true, user: true, offer: true },
+            });
+            if (!application || application.job.companyId !== companyId) {
+                throw new NotFoundException('Đơn ứng tuyển không tồn tại trong công ty này');
+            }
+
+            const userRole = await this.prismaService.userCompanyRole.findUnique({
+                where: { userId_companyId: { userId: user.sub, companyId } },
+                include: {
+                    role: {
+                        include: { rolePermissions: { include: { permission: true } } },
+                    },
+                },
+            });
+            if (!userRole) throw new ForbiddenException('Bạn không thuộc công ty này');
+
+            const isOwner = userRole.role.name === 'Owner';
+            const hasStatusUpdatePerm = userRole.role.rolePermissions.some(
+                (rp) => rp.permission.code === 'APPLICATION_STATUS_UPDATE',
+            );
+            if (!isOwner && !hasStatusUpdatePerm) {
+                throw new ForbiddenException('Bạn không có quyền gửi lời mời nhận việc');
+            }
+
+            if (application.status !== ApplicationStatus.OFFERED) {
+                throw new BadRequestException('Đơn ứng tuyển chưa ở trạng thái Offer');
+            }
+
+            if (application.offer && application.offer.status !== OfferStatus.PENDING) {
+                throw new BadRequestException('Lời mời đã được ứng viên phản hồi, không thể chỉnh sửa');
+            }
+
+            const offer = await this.prismaService.offer.upsert({
+                where: { applicationId },
+                create: {
+                    applicationId,
+                    createdBy: user.sub,
+                    salary: body.salary,
+                    startDate: body.startDate ? new Date(body.startDate) : null,
+                    responseDeadline: body.responseDeadline ? new Date(body.responseDeadline) : null,
+                    note: body.note ?? null,
+                },
+                update: {
+                    salary: body.salary,
+                    startDate: body.startDate ? new Date(body.startDate) : null,
+                    responseDeadline: body.responseDeadline ? new Date(body.responseDeadline) : null,
+                    note: body.note ?? null,
+                },
+            });
+
+            try {
+                await this.emailService.sendOfferExtendedEmail({
+                    to: application.user.email,
+                    toName: application.user.fullName,
+                    jobTitle: application.job.title,
+                    salary: offer.salary,
+                    startDate: offer.startDate,
+                    responseDeadline: offer.responseDeadline,
+                    note: offer.note,
+                });
+            } catch (emailError) {
+                console.error('Send offer extended email failed:', emailError);
+            }
+
+            return { data: offer, message: 'Gửi lời mời thành công' };
+        } catch (error: any) {
+            if (error instanceof BadRequestException || error instanceof NotFoundException || error instanceof ForbiddenException) throw error;
+            console.error('Create or update offer error:', error);
+            throw new InternalServerErrorException("Đã có lỗi xảy ra");
+        }
+    }
+
+    async getOffer(companyId: string, applicationId: string, user: Info) {
+        try {
+            const application = await this.prismaService.application.findUnique({
+                where: { id: applicationId },
+                include: { job: true },
+            });
+            if (!application || application.job.companyId !== companyId) {
+                throw new NotFoundException('Đơn ứng tuyển không tồn tại trong công ty này');
+            }
+
+            const userRole = await this.prismaService.userCompanyRole.findUnique({
+                where: { userId_companyId: { userId: user.sub, companyId } },
+                include: {
+                    role: {
+                        include: { rolePermissions: { include: { permission: true } } },
+                    },
+                },
+            });
+            if (!userRole) throw new ForbiddenException('Bạn không thuộc công ty này');
+
+            const isOwner = userRole.role.name === 'Owner';
+            const hasCvViewPerm = userRole.role.rolePermissions.some(
+                (rp) => rp.permission.code === 'CV_VIEW',
+            );
+            if (!isOwner && !hasCvViewPerm) {
+                throw new ForbiddenException('Bạn không có quyền xem lời mời nhận việc');
+            }
+
+            const offer = await this.prismaService.offer.findUnique({ where: { applicationId } });
+
+            return { data: offer };
+        } catch (error: any) {
+            if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
+            console.error('Get offer error:', error);
             throw new InternalServerErrorException("Đã có lỗi xảy ra");
         }
     }
