@@ -90,16 +90,15 @@ model User {
 }
 
 model UserSession {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @map("user_id") @db.Uuid
-  refreshToken String   @unique @map("refresh_token")
-  lookupKey    String   @unique @map("lookup_key")
-  deviceId     String?  @map("device_id")
-  userAgent    String?  @map("user_agent")
-  expiresAt    DateTime @map("expires_at")
-  isRevoked    Boolean  @default(false) @map("is_revoked")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  tokenHash  String   @unique @map("token_hash")
+  deviceId   String?  @map("device_id")
+  userAgent  String?  @map("user_agent")
+  expiresAt  DateTime @map("expires_at")
+  isRevoked  Boolean  @default(false) @map("is_revoked")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id])
 

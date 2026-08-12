@@ -17,7 +17,7 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
 import { Info } from 'src/common/interfaces/info-token.interface';
-import { createHash } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -46,6 +46,24 @@ export class AuthService {
       path: '/',
     };
   }
+
+  /**
+   * Refresh token có entropy cao (chuỗi ngẫu nhiên từ JWT), khác với mật khẩu
+   * (entropy thấp) -> không cần hàm băm chậm/tốn RAM như argon2. HMAC-SHA256
+   * có khoá vừa nhanh, vừa deterministic nên dùng luôn làm khoá tra cứu DB.
+   */
+  private hashRefreshToken(refreshToken: string): string {
+    const secret = this.configService.get<string>('REFRESH_TOKEN_HMAC_SECRET')!;
+    return createHmac('sha256', secret).update(refreshToken).digest('hex');
+  }
+
+  private compareTokenHash(a: string, b: string): boolean {
+    const bufA = Buffer.from(a, 'hex');
+    const bufB = Buffer.from(b, 'hex');
+    if (bufA.length !== bufB.length) return false;
+    return timingSafeEqual(bufA, bufB);
+  }
+
   async register(body: RegisterReqDTO) {
     try {
       const hashPassword = await argon.hash(body.password);
@@ -118,8 +136,7 @@ export class AuthService {
         existUser.email,
         existUser.type,
       );
-      const hashRefreshToken = await argon.hash(refreshToken);
-      const lookupKey = createHash('sha256').update(refreshToken).digest('hex');
+      const tokenHash = this.hashRefreshToken(refreshToken);
 
       res.clearCookie('accessToken', { path: '/' });
       res.clearCookie('refreshToken', { path: '/' });
@@ -142,8 +159,7 @@ export class AuthService {
             userId: existUser.id,
             deviceId,
             userAgent,
-            refreshToken: hashRefreshToken,
-            lookupKey,
+            tokenHash,
             expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             isRevoked: false,
           },
@@ -162,8 +178,7 @@ export class AuthService {
           userId: existUser.id,
           deviceId,
           userAgent,
-          refreshToken: hashRefreshToken,
-          lookupKey,
+          tokenHash,
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           isRevoked: true,
         },
@@ -210,9 +225,9 @@ export class AuthService {
       throw new BadRequestException('Không tìm thấy refresh token');
     }
 
-    const lookupKey = createHash('sha256').update(refreshToken).digest('hex');
+    const tokenHash = this.hashRefreshToken(refreshToken);
     await this.prismaService.userSession.updateMany({
-      where: { lookupKey, userId: user.sub, isRevoked: false },
+      where: { tokenHash, userId: user.sub, isRevoked: false },
       data: { isRevoked: true },
     });
 
@@ -228,9 +243,9 @@ export class AuthService {
       throw new UnauthorizedException('Không tìm thấy refresh token');
     }
 
-    const lookupKey = createHash('sha256').update(refreshToken).digest('hex');
+    const tokenHash = this.hashRefreshToken(refreshToken);
     const session = await this.prismaService.userSession.findUnique({
-      where: { lookupKey },
+      where: { tokenHash },
     });
 
     if (!session || session.userId !== user.sub) {
@@ -242,9 +257,7 @@ export class AuthService {
     if (session.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token đã hết hạn');
     }
-
-    const verified = await argon.verify(session.refreshToken, refreshToken);
-    if (!verified) {
+    if (!this.compareTokenHash(session.tokenHash, tokenHash)) {
       throw new UnauthorizedException('Refresh token không hợp lệ');
     }
 
@@ -258,16 +271,12 @@ export class AuthService {
       user.email,
       user.type,
     );
-    const hashNewRefreshToken = await argon.hash(newRefreshToken);
-    const newLookupKey = createHash('sha256')
-      .update(newRefreshToken)
-      .digest('hex');
+    const newTokenHash = this.hashRefreshToken(newRefreshToken);
 
     await this.prismaService.userSession.update({
       where: { id: session.id },
       data: {
-        refreshToken: hashNewRefreshToken,
-        lookupKey: newLookupKey,
+        tokenHash: newTokenHash,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
     });
